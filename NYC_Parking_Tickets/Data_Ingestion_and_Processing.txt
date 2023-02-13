@@ -1,0 +1,568 @@
+/** Title: Data Ingestion and Processing - Assignment **/
+/** Submitted by: Vidhi Thakkar **/
+
+/** Problem Statement: The New York City Taxi & Limousine Commission (TLC) has provided a dataset which contains the detailed trip level data of trips made by taxis in New York City.Our analysis is focused on the yellow taxis for the months of November and December 2017. **/
+
+/**************************************************************** Data Dictionary *************************************************************************/ 
+
+/** [1] VendorID -- A code indicating the TPEP provider that provided the record. **/ 
+        1= Creative Mobile Technologies, LLC; 2= VeriFone Inc. **/ 
+/** [2] tpep_pickup_datetime -- The date and time when the meter was engaged. **/ 
+/** [3] tpep_dropoff_datetime -- The date and time when the meter was disengaged. **/ 
+/** [4] Passenger_count -- The number of passengers in the vehicle. This is a driver-entered value. **/ 
+/** [5] Trip_distance -- The elapsed trip distance in miles reported by the taximeter. **/ 
+/** [6] RateCodeID -- The final rate code in effect at the end of the trip.  
+        1= Standard rate 2=JFK 3=Newark 4=Nassau or Westchester 5=Negotiated fare 6=Group ride. **/ 
+/** [7] Store_and_fwd_flag --This flag indicates whether the trip record was held in vehicle memory before sending to the vendor, aka store and forward,             because the vehicle did not have a connection to the server. 
+        Y= store and forward trip N= not a store and forward trip. **/ 
+/** [8] PULocationID --TLC Taxi Zone in which the taximeter was engaged. **/ 
+/** [9] DOLocationID --TLC Taxi Zone in which the taximeter was disengaged. **/ 
+/** [10] Payment_type--A numeric code signifying how the passenger paid for the trip.  
+         1= Credit card 2= Cash 3= No charge 4= Dispute 5= Unknown 6= Voided trip. **/ 
+/** [11] Fare_amount -- The time-and-distance fare calculated by the meter. **/ 
+/** [12] Extra -- Miscellaneous extras and surcharges.  Currently, this only includes the $0.50 and $1 rush hour and overnight charges. **/ 
+/** [13] MTA_tax -- $0.50 MTA tax that is automatically triggered based on the metered rate in use. **/ 
+/** [14] Tip_amount -- Tip amount – This field is automatically populated for credit card tips. Cash tips are not included. **/ 
+/** [15] Tolls_amount -- Total amount of all tolls paid in trip. **/ 
+/** [16] Improvement_surcharge -- $0.30 improvement surcharge assessed trips at the flag drop. The improvement surcharge began being levied in 2015. **/ 
+/** [17] Total_amount -- The total amount charged to passengers. It does not include cash tips.  **/ 
+
+
+/************************************************************** Assumptions *******************************************************************************/
+
+/** [1] Here the data is not very consistent. We have to consider the data given for the year 2017 and for the month of Nov and Dec only. We can see         the data from the years 2001 to 2014. However I have tried to clean all the data inconsistency and then analysed the results **/
+
+/** [2] Setting the paramaters so that the tables can be created without errors **/
+
+ADD JAR /opt/cloudera/parcels/CDH/lib/hive/lib/hive-hcatalog-core-1.1.0-cdh5.11.2.jar;
+SET hive.exec.max.dynamic.partitions = 1000;
+SET hive.exec.max.dynamic.partitions.pernode = 1000;
+SET hive.exec.dynamic.partition = true;
+SET hive.exec.dynamic.partition.mode = nonstrict;
+
+/** [3] Setting the parameters so that table can be created from both folders Nov and Dec in HDFS **/
+
+set hive.mapred.supports.subdirectories=true;
+set hive.input.dir.recursive=true;
+set hive.supports.subdirectories=true;
+set mapreduce.input.fileinputformat.input.dir.recursive=true;
+
+/***************************************************** Creating External table for November ***************************************************************/
+
+drop table nyc_nov;
+
+create external table if not exists nyc_nov (VendorID int, 
+tpep_pickup_datetime timestamp,
+tpep_dropoff_datetime timestamp, 
+Passenger_count int, 
+Trip_distance double, 
+RateCodeID int, 
+Store_and_fwd_flag String, 
+PULocationID string, 
+DOLocationID string, 
+Payment_type int,
+Fare_amount double, 
+Extra double, 
+MTA_tax double, 
+Tip_amount double, 
+Tolls_amount double, 
+Improvement_surcharge double, 
+Total_amount double)
+ROW FORMAT DELIMITED FIELDS TERMINATED BY ','
+STORED AS TEXTFILE
+location '/common_folder/nyc_taxi_data/nov/'
+tblproperties ("skip.header.line.count"="2");
+
+/** Testing the data table **/
+
+select * from nyc_nov limit 10;
+
+/******************************************************** Creating External table for December ************************************************************/
+
+drop table nyc_dec;
+
+create external table if not exists nyc_dec (VendorID int, 
+tpep_pickup_datetime timestamp,
+tpep_dropoff_datetime timestamp, 
+Passenger_count int, 
+Trip_distance double, 
+RateCodeID int, 
+Store_and_fwd_flag String, 
+PULocationID string, 
+DOLocationID string, 
+Payment_type int,
+Fare_amount double, 
+Extra double, 
+MTA_tax double, 
+Tip_amount double, 
+Tolls_amount double, 
+Improvement_surcharge double, 
+Total_amount double)
+ROW FORMAT DELIMITED FIELDS TERMINATED BY ','
+STORED AS TEXTFILE
+location '/common_folder/nyc_taxi_data/dec/'
+tblproperties ("skip.header.line.count"="2");
+
+/** Testing the data table **/
+
+select * from nyc_dec limit 10;
+
+/*********************************************************** Creating Merged Table ************************************************************************/
+
+drop table nyc_merged;
+
+create external table if not exists nyc_merged (
+VendorID int, tpep_pickup_datetime timestamp,
+tpep_dropoff_datetime timestamp, Passenger_count int, 
+Trip_distance double, RateCodeID int, 
+Store_and_fwd_flag String, PULocationID string, 
+DOLocationID string, Payment_type int,
+Fare_amount double, Extra double, 
+MTA_tax double, Tip_amount double, 
+Tolls_amount double, Improvement_surcharge double, Total_amount double) 
+location '/user/thakkarvidhi12_gmail/';
+
+/** Merging 2 tables together **/
+
+insert into nyc_merged
+select * from nyc_nov 
+union All
+select * from nyc_dec;
+
+/** Testing the data table **/
+
+select * from nyc_merged limit 10;
+
+/************************************************************* Basic Data Quality Checks ******************************************************************/
+
+/** [1] How many records has each TPEP provider provided? Write a query that summarises the number of records of each provider. **/
+
+select vendorid as Vendor_Id, count(*) as Records
+from nyc_merged
+group by vendorid
+order by vendorid;
+
+/** Creative Moblie Technologies,LLC provided 84,47,149 records [8.47 million records]   **/
+/** VeriFone Inc. provided 103,45,930 records [10.34 million records]                    **/
+
+
+/** [2] The data provided is for months November and December only. Check whether the data is consistent, and if not, identify the data quality issues. **/   
+
+/** (a) Firstly let's check the records for tpep_pickup_datetime since it is the first point of contact with passenger. **/
+
+select  year(tpep_pickup_datetime) as Pickup_Year, month(tpep_pickup_datetime) as Pickup_Month, count(*) as Records
+from nyc_merged
+group by year(tpep_pickup_datetime), month(tpep_pickup_datetime)
+order by Pickup_Year, Pickup_Month;
+
+/** The Pickup_Year ranges from the year 2001 to 2041. This shows the inconsistency in the data **/
+
+/** (b) Let's check tpep_dropoff_datetime.  **/
+
+select year(tpep_dropoff_datetime) as Dropoff_Year, month(tpep_dropoff_datetime) as Dropoff_Month, count(*) as Num_Records
+from nyc_merged
+group by year(tpep_dropoff_datetime), month(tpep_dropoff_datetime)
+order by Dropoff_Year, Dropoff_Month;
+
+/** The Dropoff_Year ranges from the year 2001 to 2041. This shows the inconsistency in the data **/
+
+
+/** (c) Let's compare both tpep_pickup_datetime and tpep_dropoff_datetime.  **/
+
+SELECT count(*) as Mis_Match
+FROM nyc_merged
+where unix_timestamp(tpep_pickup_datetime) > unix_timestamp(tpep_dropoff_datetime);
+
+/** The result for above query reveals that there are 1419 records where dropoff time is before pickup time which is clearly illogical. **/
+/** The data quality issues need to be addressed. These nonconforming records need to be removed before we proceed with the rest of the analysis. **/
+
+/**************************************************** Identifying data quality issues ******************************************************************/
+
+/** (a) Let's check Passenger_count attribute. **/
+
+select Passenger_count as Num_of_Passengers, count(*) as Records
+from nyc_merged
+group by Passenger_count
+order by Passenger_count;
+
+/** There are 108970 records for 0 passenger count which is impposible. There is one record for 192 passengers which is a mistake while entering the data by     the driver. The maximum amount of passengers allowed in a yellow taxicab can be 5.(6 if there is a small child.) Therefore only Passenger_count between     1-6 will be treated as valid records. **/
+
+/** (b) Let's check RateCodeID attribute **/ 
+
+select RateCodeID, count(*) as Records
+from nyc_merged
+group by RateCodeID
+order by RateCodeID;
+
+/** According to the data dictionary the rate code ids are from 1-6 hence the 178 records under the code 99 will be treated as non-conforming **/
+
+/** (c) Let's check the Extra attribute. **/
+
+select Extra, count(*) as Records
+from nyc_merged
+group by Extra
+order by Extra; 
+
+/** The Extra charge only includes $0.50 for rush hour and $1 overnight charges otherwise it is $0. There are Extra charges in the dataset which are ranging     between -$48.64 and $69.8. Therefore, all other values will be treated as non-conformities. **/
+
+/** (d) Let's check MTA_tax attribute. **/
+
+select  MTA_tax, count(*) as Records
+from nyc_merged
+group by MTA_tax
+order by MTA_tax;
+
+/** Some values are ranging between -$0.5 and $117.85. Mta_tax is automatically triggered based on the metered rate in use.Therefore, only $0 or $0.5 values     are correct, rest all will be treated as non-conformities. **/
+
+/** (e) Let's check the Payment_type attribute. **/
+
+select Payment_type, count(*) as Records
+from nyc_merged
+group by Payment_type 
+order by Payment_type;
+
+/** There are 4 distinct payment_types that are in agreement with the data-dictionary. **/
+
+/** (f) Let's check the Improvement_surcharge attribute. **/ 
+
+select Improvement_surcharge, count(*) as Records
+from nyc_merged
+group by Improvement_surcharge
+order by Improvement_surcharge;
+
+/** There are 5 distinct values of improvement_surcharge Ranging between -$0.3 and $1.The improvement_surcharge can only take up $0 or $0.3, hence all other     values will be treated as non-conformity **/
+
+/** (g) Let's check the Tip_amount (if non-zero tip amount has been registed for cash payment trips.) **/
+
+select Tip_amount, count(*) as Records
+from nyc_merged
+where Payment_type=2 and Tip_amount!= 0
+group by Tip_amount
+
+/** There are 3 records for which payment_type was cash are it registered a tip_amount in the range $1.8 to $20.65. These 3 records are negligible **/
+
+/** (h) Let's check the Store_and_fwd_flag attribute **/
+
+select Store_and_fwd_flag, count(*) as Records
+from nyc_merged
+group by Store_and_fwd_flag;
+
+/** There are only 2 store_forward_flag parameter values [Y and N] which is inline with the specified limits, only 0.34% of the total records being stored     and the passed to the servers. **/
+
+/** [3] Which vendor is doing a bad job in providing the records?  **/
+
+select VendorID, count(*) as Mis_Match
+from nyc_merged
+where (year(tpep_pickup_datetime) !=2017 or 
+month(tpep_pickup_datetime) not in (11,12) or 
+year(tpep_dropoff_datetime) !=2017 or 
+month(tpep_dropoff_datetime) not in (11,12) or 
+unix_timestamp(tpep_pickup_datetime) > unix_timestamp(tpep_dropoff_datetime) or 
+Passenger_count not in (1,2,3,4,5,6) or 
+Trip_distance <= 0.0 or 
+RateCodeID not in (1,2,3,4,5,6) or 
+Payment_type not in (1,2,3,4,5,6) or 
+Fare_amount <= 0 or 
+Extra not in (0,0.5,1) or 
+Mta_tax not in(0,0.5) or 
+Tip_amount < 0.0 or 
+(payment_type=2 and tip_amount!=0) or 
+Tolls_amount < 0.0 or 
+Improvement_surcharge not in (0,0.3) or 
+Total_amount <= 0)
+group by VendorID
+order by VendorID;
+
+/** VendorID 1: Creative Moblie Technologies,LLC
+
+    Non-Conforming Records are 2,08,405 records out of 84,47,149 records [8.47 million records]
+    Percentage Non-Conforming Records: 2.467%
+
+    VendorID 2: VeriFone Inc.
+
+    Non-Conforming Records are 103192 out of 103,45,930 records [10.34 million records]
+    Percentage Non-Conforming Records: 0.997%
+
+    Hence VendorID 1: Creative Moblie Technologies,LLC is doing a bad job in providing records. **/
+
+/************************************************************** Partioning ******************************************************************************/
+
+/** Setting Hive Parameters for partioning **/
+
+SET hive.exec.dynamic.partition = true;
+SET hive.exec.dynamic.partition.mode = nonstrict;
+SET hive.exec.max.dynamic.partitions = 1000;
+SET hive.exec.max.dynamic.partitions.pernode = 1000;
+SET hive.execution.engine=mr;
+
+create external table if not exists nyc_parted(VendorID int, 
+tpep_pickup_datetime timestamp,
+tpep_dropoff_datetime timestamp, 
+Passenger_count int, 
+Trip_distance double, 
+RateCodeID int, 
+Store_and_fwd_flag String, 
+PULocationID string, 
+DOLocationID string, 
+Payment_type int,
+Fare_amount double, 
+Extra double, 
+MTA_tax double, 
+Tip_amount double, 
+Tolls_amount double, 
+Improvement_surcharge double, 
+Total_amount double) 
+partitioned by (mnth int, by_date int)
+stored as orc location '/user/thakkarvidhi12_gmail/'
+tblproperties ("orc.compress"="SNAPPY");
+
+
+
+/** Then insert the data in the table **/
+
+
+insert overwrite table nyc_parted 
+partition(mnth, by_date)
+select VendorID, 
+tpep_pickup_datetime, 
+tpep_dropoff_datetime, 
+Passenger_count, 
+Trip_distance, 
+RateCodeID, 
+Store_and_fwd_flag, 
+PULocationID, 
+DOLocationID, 
+Payment_type, 
+Fare_amount, 
+Extra, 
+MTA_tax, 
+Tip_amount, 
+Tolls_amount, 
+Improvement_surcharge, 
+Total_amount, 
+date_format(tpep_pickup_datetime, 'mm') as mnth, 
+date_format(tpep_pickup_datetime, 'dd') as by_date
+from nyc_merged
+where year(tpep_pickup_datetime)=2017 and 
+month(tpep_pickup_datetime) in (11,12) and 
+year(tpep_dropoff_datetime)=2017 and 
+month(tpep_dropoff_datetime) in (11,12) and 
+unix_timestamp(tpep_pickup_datetime) < unix_timestamp(tpep_dropoff_datetime) and 
+Passenger_count in(1,2,3,4,5,6) and 
+Trip_distance > 0.0 and 
+RateCodeID in(1,2,3,4,5,6) and 
+Payment_type in (1,2,3,4,5,6) and 
+Fare_amount > 0 and 
+Extra in (0,0.5,1) and 
+MTA_tax in(0,0.5) and 
+Tip_amount >= 0.0 and 
+Tolls_amount >= 0.0 and 
+Improvement_surcharge in (0,0.3) and 
+Total_amount > 0;
+
+
+select * from nyc_parted limit 10;
+
+
+/****************************************************************** Analysis-I ***************************************************************************/
+
+/** [1] Compare the overall average fare for November and December. **/
+
+select mnth as Month_of_Year, round(avg(Fare_amount),2) as Average_Fare_Charge
+from nyc_parted
+group by mnth
+order by mnth;
+
+/** Comparing the results **/
+
+select round(avg(CASE when mnth=11 then Fare_amount else null end),2) as November_Average_Fare, round(avg(CASE when mnth=12 then Fare_amount else null end),2) as December_Average_Fare, round(100*((avg(CASE when mnth=11 then Fare_amount else null end)-avg(CASE when mnth=12 then Fare_amount else null end))/avg(CASE when mnth=12 then Fare_amount else null end)),2) as Nov_AvgFare_pergreaterthan_December
+from nyc_parted;
+
+/** November Average fare_charge: $12.9
+    December Average fare_charge: $12.75
+    Therefore the Average fare_charge recorded during November is higher than the average fare_charge recorded in December. **/
+
+
+/** [2] Explore the ‘number of passengers per trip’ - how many trips are made by each level of ‘Passenger_count’? Do most people travel solo or with other           people? **/
+
+select Passenger_count, count(*)as Records
+from nyc_parted
+group by Passenger_count
+order by Passenger_count;
+
+/** Solo Travellers: passenger_count=1 and for Groups: passenger_count [2-6] **/
+
+SELECT sum(CASE when Passenger_count = 1 THEN 1 ELSE 0 END) as Solo_Passenger_Trips, 
+sum(CASE when Passenger_count != 1 THEN 1 ELSE 0 END) as Group_Passenger_Trips, 
+round(100*sum(CASE when Passenger_count = 1 THEN 1 ELSE 0 END)/count(*),3) as Solo_Trips_as_Percentage_of_Total_Trips
+from nyc_parted;
+
+/** Number of trips with Solo Passengers: 131,02,523
+    Number of trips with Group Passengers: 53,78,444
+    Percentage of trips with Solo Passengers w.r.t Total Number of trips: 70.897%
+    In 70.897% of all the trips, people prefer to travel Solo. **/
+
+
+/** [3] Which is the most preferred mode of payment?  **/
+
+select Payment_type as Payment_Mode, count(*) as Records
+from nyc_parted
+group by Payment_type
+order by Records desc;
+
+/** Credit_Card [payment_type=1] and Cash [payment_type=2] constitute the majority of the records in the dataset. **/
+
+SELECT sum(CASE when Payment_type = 1 THEN 1 ELSE 0 END) as Credit_Card_Trips,
+sum(CASE when Payment_type = 2 THEN 1 ELSE 0 END) as Cash_Trips, count(*) as Total_Number_Trips,
+round(100*sum(CASE when Payment_type = 1 THEN 1 ELSE 0 END)/count(*),2) as Percentage_Trips_paid_with_Credit_Card, 
+round(100*sum(CASE when Payment_type = 2 THEN 1 ELSE 0 END)/count(*),2) as Percentage_Trips_paid_with_Cash
+from nyc_parted;
+
+/** Total Number of records: 184,80,967
+
+    Number of Credit Card Paid trips: 124,69,337
+    Percentage of Total Trips paid with Credit Card: 67.47%
+
+    Number of Cash Paid trips: 59,14,388
+    Percentage of Total Trips paid with Cash: 32.00%
+
+    Hence, Credit Card [payment_type=1] is the most preferred type of payment. **/
+
+
+/** [4] What is the average tip paid? Compare the average tip with the 25th, 50th and 75th percentiles and comment whether the ‘average tip’ is a                 representative statistic (of the central tendency) of ‘tip amount paid’.  **/
+
+select round(avg(Tip_amount),3) as Average_Tip, 
+round(percentile_approx(Tip_amount,0.25),3) as 25th_Percentile_Tip, 
+round(percentile_approx(Tip_amount, 0.50),3) as 50th_Percentile_Tip, 
+round(percentile_approx(Tip_amount, 0.75),3) as 75th_Percentile_Tip, 
+count(distinct Tip_amount) as Distict_Tip_Amounts
+from nyc_parted
+where Payment_type != 2;
+
+ /** Here Tip amount is automatically populated for credit card tips. Cash tips are not included. **/
+
+ /** Here, since tip_amount is stored as double data type we have to use percentile_approx() instead of percentile(). From the documentation:                percentile_approx(DOUBLE col, p [, B]) .Returns an approximate pth percentile of a numeric column (including floating point types) in the group. 
+     The B parameter controls approximation accuracy at the cost of memory. Higher values yield better approximations, and the default is 10,000. 
+     When the number of distinct values in col is smaller than B, this gives an exact percentile value.
+     Since the number of distinct tip amounts 3,894 < 10,000 percentile_approx() returns the exact percentile value.
+     There $0.683 difference of the Average_Tip - Median_Tip [50th percentile], this diffence constitutes to 39.50% of the inter-quartile range. 
+     Therefore, there is significant skewness in the distribution of the tip_amount parameter. 
+     This implies that the Average Tip is sqewed to the right of the Median_tip. This may be offset due to certain records having higher tip_amount values.       Therefore, in this situation Average_Tip is not representative of central tendency. 
+     We can consider Median_Tip as a better representative of central tendency. **/
+
+
+
+/** [5] Explore the ‘Extra’ (charge) variable - what fraction of total trips have an extra charge is levied?  **/
+
+select Extra, count(*)as Records
+from nyc_parted
+group by Extra
+order by Extra;
+
+/** The number of trips where the extra_charge was levied is marginally lower than the number of trips for which it was not. **/
+
+/** Query to compare the Fraction of trips for which the extra_charge was levied. **/
+
+SELECT sum(CASE when Extra != 0 THEN 1 ELSE 0 END) as Trips_With_Extra_Misc_Charge, count(*) as Total_Number_Trips,
+round(sum(CASE when Extra != 0 THEN 1 ELSE 0 END)/count(*),5) as Fraction_Trips_With_Extra_Charge
+from nyc_parted;
+
+/** Number of Trips for which the Extra_Misc_Charge was levied: 85,24,850
+    Total Number of Trips: 184,80,967
+    Fraction of trips for which the Extra_Misc_Charge was levied: 0.46128 [or 46.128%]  **/
+
+
+/****************************************************************** Analysis-II ***************************************************************************/
+
+/** [1] What is the correlation between the number of passengers and tip paid? Do multiple travellers pay more compared to solo travellers?  **/
+
+select round(corr(Passenger_count, tip_amount),3)as Corr_PassengerCnt_vs_TipAmt, round(avg(CASE when Passenger_count=1 then tip_amount else null end),3) as Solo_Trips_Average_Tip, round(avg(CASE when Passenger_count != 1 then tip_amount else null end),3) as Group_Trips_Average_Tip
+from nyc_parted
+where Payment_type != 2;
+
+/** Here we are calculating correlation between the tip_amount and number of passengers. The answer will be directly impacted with the magnitude value of        tip_amount and our dataset encodes tip_amount as $0 for all trips that are paid with Cash or with [payment_type=2] irrespective of the number of         passengers. This will distort the correlation value. Therefore, we need to exclude the records with payment_type=2 for this query. **/
+
+/** Correlation between Passenger Count and Tip_Amount: +0.009
+    This suggests a very weak positive correlation between Passenger Count and Tip_Amount.
+    Average Tip for Solo Trips: $2.659
+    Average Tip for Group Trips: $2.743                   **/
+
+
+/** [2] Create five buckets of ‘tip paid’: [0-5), [5-10), [10-15) , [15-20) and >=20. Calculate the percentage share of each bucket (i.e. the fraction of         trips falling in each bucket).   **/
+
+select Tip_Bucket, count(*)as Num_Records, max(records_count)as Total_Number_Records, 
+round(count(*)/max(records_count),5)as Tip_Bucket_asfractionof_Overall
+from 
+    (select kcol.*, count(*) over () records_count,
+	CASE when tip_amount >= 0 and tip_amount <5 then '0_Bucket_5' 
+	when tip_amount >=5 and tip_amount < 10 then '5_Bucket_10'
+	when tip_amount >=10 and tip_amount < 15 then '10_Bucket_15'
+	when tip_amount >=15 and tip_amount < 20 then '15_Bucket_20'
+	else '20above_Bucket' 
+	end as Tip_Bucket 
+        from orc_parted_taxifare kcol) as sub_tbl
+group by Tip_Bucket
+order by Tip_Bucket_asfractionof_Overall desc;
+
+/** 0_Bucket_5 constitutes 92.411% of all records in the dataset.
+    5_Bucket_10 constitutes 5.623% of all records in the dataset.
+    10_Bucket_15 constitutes 1.685% of all records in the dataset.
+    15_Bucket_20 constitutes 0.191% of all records in the dataset.
+    20above_Bucket constitutes 0.090% of all records in the dataset. **/
+
+
+/** These results are expected as the tip_amount is logged as $0 for all Cash paid trips where (payment_type=2), which constitutes to about 32% of all records in the dataset. Therefore if a total objective view is required over the tip_amount wise bucketing of the table then we can specify a filter condition to remove all records where payment_type=2 as given below:
+
+--select Tip_Bucket, count(*)as Num_Records, max(records_count)as Total_Number_Records, 
+--round(count(*)/max(records_count),5)as Tip_Bucket_asfractionof_Overall
+--from (select kcol.*, count(*) over () records_count,
+--	CASE when tip_amount >= 0 and tip_amount <5 then '0_Bucket_5' 
+--	when tip_amount >=5 and tip_amount < 10 then '5_Bucket_10'
+--	when tip_amount >=10 and tip_amount < 15 then '10_Bucket_15'
+--	when tip_amount >=15 and tip_amount < 20 then '15_Bucket_20'
+--	else '20above_Bucket' 
+--	end as Tip_Bucket 
+--    from orc_parted_taxifare kcol)as sub_tbl
+--where sub_tbl.payment_type != 2
+--group by Tip_Bucket
+--order by Tip_Bucket_asfractionof_Overall desc;     **/
+
+
+
+
+/** [3] Which month has a greater average ‘speed’ - November or December? Note that the variable ‘speed’ will have to be derived from other metrics. **/
+
+SELECT round(avg(CASE when mnth=11 THEN (Trip_distance/((unix_timestamp(tpep_dropoff_datetime)-unix_timestamp(tpep_pickup_datetime))/3600)) ELSE null end),3) as November_Average_Speed_MPH, 
+round(avg(CASE when mnth=12 THEN (trip_distance/((unix_timestamp(tpep_dropoff_datetime)-unix_timestamp(tpep_pickup_datetime))/3600)) ELSE null end),3)as December_Average_Speed_MPH, 
+round(round(avg(CASE when mnth=11 THEN (trip_distance/((unix_timestamp(tpep_dropoff_datetime)-unix_timestamp(tpep_pickup_datetime))/3600)) ELSE null end),3) - round(avg(CASE when mnth=12 THEN (trip_distance/((unix_timestamp(tpep_dropoff_datetime)-unix_timestamp(tpep_pickup_datetime))/3600)) ELSE null end),3),3) as November_minus_December_Avg_Speed_MPH
+from nyc_parted;
+
+ /** November Month Average Speed: 12.695 MPH
+     December Month Average Speed: 12.625 MPH
+     Average Speed of November - Average Speed of December: 0.07 MPH
+     The Average Speed of taxis in November is greater than their Average Speed in December. **/
+
+
+/** [4] Analyse the average speed of the most happening days of the year i.e. 31st December (New year’s eve) and 25th December (Christmas Eve) and compare         it with the overall average.    **/
+
+SELECT round(avg(CASE when mnth=12 and m_day=25 THEN (trip_distance/((unix_timestamp(tpep_dropoff_datetime)-unix_timestamp(tpep_pickup_datetime))/3600)) ELSE null end),3) as ChristmasEve_Average_Speed_MPH, 
+round(avg(CASE when mnth=12 and m_day=31 THEN (trip_distance/((unix_timestamp(tpep_dropoff_datetime)-unix_timestamp(tpep_pickup_datetime))/3600)) ELSE null end),3)as NewYearEve_Average_Speed_MPH, 
+round(avg(CASE when mnth in (11,12) THEN (trip_distance/((unix_timestamp(tpep_dropoff_datetime)-unix_timestamp(tpep_pickup_datetime))/3600)) ELSE null end),3)as Overall_Average_Speed_MPH, 
+round(round(avg(CASE when mnth=12 and m_day=25 THEN (trip_distance/((unix_timestamp(tpep_dropoff_datetime)-unix_timestamp(tpep_pickup_datetime))/3600)) ELSE null end),3) - round(avg(CASE when mnth in (11,12) THEN (trip_distance/((unix_timestamp(tpep_dropoff_datetime)-unix_timestamp(tpep_pickup_datetime))/3600)) ELSE null end),3),3) as ChristmasEve_minus_Overall_Avg_Speed_MPH, 
+round(round(avg(CASE when mnth=12 and m_day=31 THEN (trip_distance/((unix_timestamp(tpep_dropoff_datetime)-unix_timestamp(tpep_pickup_datetime))/3600)) ELSE null end),3) - round(avg(CASE when mnth in (11,12) THEN (trip_distance/((unix_timestamp(tpep_dropoff_datetime)-unix_timestamp(tpep_pickup_datetime))/3600)) ELSE null end),3),3) as NewYearEve_minus_Overall_Avg_Speed_MPH
+from nyc_parted;
+
+ /** Overall Average Speed for November and December Combined: 12.659 MPH
+
+  --1. Average Speed Statistics of Christmas Eve (25th December)
+  --Average Speed on Christmas Eve: 16.859 MPH
+  --Speed greater than Overall Avg: 4.20 MPH
+  --Percentage greater than Overall Avg: + 33.18%
+
+  --2. Average Speed Statistics of New Year's Eve (31st December)
+  --Average Speed on New Year's Eve: 14.091 MPH
+  --Speed greater than Overall Avg: 1.432 MPH
+  --Percentage greater than Overall Avg: + 11.31%
+
+  --The average speed on both Christmas and New Year is higher than the overall average speed.
+  --However, the average speed is Highest for Christmas out of the 3 instances considered for comparison.  **/
